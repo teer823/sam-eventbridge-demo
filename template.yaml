@@ -11,32 +11,124 @@ Globals:
     Timeout: 3
     MemorySize: 128
 
+Parameters:
+  EventBusName: 
+    Type: String
+    Default: sam-eventbridge-demo-event-bus
+  # EventSource: 
+  #   Type: String
+  #   Default: sam-eventbridge-demo-event-source
+  MessageReceivedEventDetailType: 
+    Type: String
+    Default: event.message.received
+  MessageProcessedEventDetailType:
+    Type: String
+    Default: event.message.processed
+
 Resources:
-  HelloWorldFunction:
+  # Lambda Function for receieving new message via API Call and publish to event bridge
+  NewMessageFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
-      CodeUri: hello_world/
-      Handler: app.lambda_handler
+      CodeUri: functions/new_message
+      Handler: app.new_message
+      Role: !GetAtt FunctionExecutionRole.Arn
       Runtime: python3.9
       Architectures:
         - x86_64
+      Environment:
+        Variables:
+          EVENT_BUS_NAME: !GetAtt DemoCustomEventBus.Name
+          EVENT_DETAIL_TYPE: !Ref MessageReceivedEventDetailType
       Events:
-        HelloWorld:
+        NewMessageApiCall:
           Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
           Properties:
-            Path: /hello
-            Method: get
+            Path: /
+            Method: post
+  
+  # Lambda Function to process new message recieved and re-publish to event bridge as new event
+  ProcessMessageFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: functions/process_message
+      Handler: app.process_message
+      Runtime: python3.9
+      Role: !GetAtt FunctionExecutionRole.Arn
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          EVENT_BUS_NAME: !GetAtt DemoCustomEventBus.Name
+          EVENT_DETAIL_TYPE: !Ref MessageProcessedEventDetailType
+      Events:
+        MessageReceived:
+          Type: EventBridgeRule
+          Properties:
+            Enabled: true
+            EventBusName: !GetAtt DemoCustomEventBus.Name
+            Pattern:
+              detail-type:
+                - !Ref MessageReceivedEventDetailType
+
+  # Lambda Function to log processed message
+  LogMessageFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: functions/log_message/
+      Handler: app.log_message
+      Runtime: python3.9
+      Role: !GetAtt FunctionExecutionRole.Arn
+      Architectures:
+        - x86_64
+      Events:
+        MessageProcessed:
+          Type: EventBridgeRule
+          Properties:
+            Enabled: true
+            EventBusName: !GetAtt DemoCustomEventBus.Name
+            Pattern:
+              detail-type:
+                - !Ref MessageProcessedEventDetailType
+
+  # Lambda Function Execution Role allowing putEvent to EventBridge on specific Event Bus
+  FunctionExecutionRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Delete
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SaberX-EventBridgePutEventsPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - events:PutEvents
+                Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/${DemoCustomEventBus.Name}"
+
+  # Event Bus
+  DemoCustomEventBus: 
+    Type: AWS::Events::EventBus
+    Properties: 
+      Name: !Ref EventBusName
 
 Outputs:
   # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
   # Find out more about other implicit resources you can reference within SAM
   # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
-  HelloWorldApi:
-    Description: "API Gateway endpoint URL for Prod stage for Hello World function"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
-  HelloWorldFunction:
-    Description: "Hello World Lambda Function ARN"
-    Value: !GetAtt HelloWorldFunction.Arn
-  HelloWorldFunctionIamRole:
-    Description: "Implicit IAM Role created for Hello World function"
-    Value: !GetAtt HelloWorldFunctionRole.Arn
+  NewMessageApi:
+    Description: "API Gateway endpoint URL for Prod stage for New Message function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+  EventBusArn:
+    Description: "Event Bus ARN"
+    Value: !GetAtt DemoCustomEventBus.Arn

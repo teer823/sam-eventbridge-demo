@@ -17,6 +17,10 @@ lint = true
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 resolve_s3 = true
+s3_prefix = "sam-eventbridge-demo"
+region = "ap-southeast-1"
+image_repositories = []
+parameter_overrides = "EventBusName=\"sam-eventbridge-demo-event-bus\" EventSource=\"sam-eventbridge-demo-event-source\" MessageReceivedEventDetailType=\"event.message.received\" MessageProcessedEventDetailType=\"event.message.processed\""
 
 [default.package.parameters]
 resolve_s3 = true
