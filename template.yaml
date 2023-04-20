@@ -90,6 +90,27 @@ Resources:
             Pattern:
               detail-type:
                 - !Ref MessageProcessedEventDetailType
+  
+  # Lambda Function to log event 
+  LogEventFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: functions/log_event/
+      Handler: app.log_event
+      Runtime: python3.9
+      Role: !GetAtt FunctionExecutionRole.Arn
+      Architectures:
+        - x86_64
+      Events:
+        MessageProcessed:
+          Type: EventBridgeRule
+          Properties:
+            Enabled: true
+            EventBusName: !GetAtt DemoCustomEventBus.Name
+            Pattern:
+              detail-type:
+                - !Ref MessageReceivedEventDetailType
+                - !Ref MessageProcessedEventDetailType
 
   # Lambda Function Execution Role allowing putEvent to EventBridge on specific Event Bus
   FunctionExecutionRole:
